@@ -33,6 +33,17 @@ static int CalcBytesPerLine(float bytes_avail_x, const ImVec2& byte_size, const 
 	return separators > 0 ? CalcBytesPerLine(bytes_avail_x - (actual_separators * spacing.x), byte_size, spacing, show_ascii, char_size, 0) : bytes_per_line;
 }
 
+static ImColor CalcContrastColor(ImColor color)
+{
+#ifdef IMGUI_USE_BGRA_PACKED_COLOR
+	const float l = (0.299f * (color.Value.z * 255.f) + 0.587f * (color.Value.y * 255.f) + 0.114f * (color.Value.x * 255.f)) / 255.f;
+#else
+	const float l = (0.299f * (color.Value.x * 255.f) + 0.587f * (color.Value.y * 255.f) + 0.114f * (color.Value.z * 255.f)) / 255.f;
+#endif
+	const int c = l > 0.5f ? 0 : 255;
+	return IM_COL32(c, c, c, 255);
+}
+
 bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 {
 	if (!ImGui::BeginChild(str_id))
@@ -52,7 +63,7 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 	{
 		int address_chars = state->AddressChars;
 		if (address_chars == -1)
-			address_chars = snprintf(nullptr, 0, "%zX", (size_t)state->MaxBytes) + 1;
+			address_chars = ImFormatString(nullptr, 0, "%zX", (size_t)state->MaxBytes) + 1;
 
 		address_max_chars = address_chars + 1;
 		address_max_size = char_size.x * address_max_chars + spacing.x * 0.5f;
@@ -89,8 +100,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 	int lines_count;
 	if (bytes_per_line != 0)
 	{
-		lines_count = state->MaxBytes / (size_t)bytes_per_line;
-		if ((size_t)lines_count * (size_t)bytes_per_line < state->MaxBytes)
+		lines_count = state->MaxBytes / bytes_per_line;
+		if (lines_count * bytes_per_line < state->MaxBytes)
 		{
 			++lines_count;
 		}
@@ -106,17 +117,17 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 
 	const bool lowercase_bytes = state->LowercaseBytes;
 
-	const size_t select_start_byte = state->SelectStartByte;
+	const int select_start_byte = state->SelectStartByte;
 	const int select_start_subbyte = state->SelectStartSubByte;
-	const size_t select_end_byte = state->SelectEndByte;
+	const int select_end_byte = state->SelectEndByte;
 	const int select_end_subbyte = state->SelectEndSubByte;
-	const size_t last_selected_byte = state->LastSelectedByte;
+	const int last_selected_byte = state->LastSelectedByte;
 
-	size_t next_select_start_byte = select_start_byte;
+	int next_select_start_byte = select_start_byte;
 	int next_select_start_subbyte = select_start_subbyte;
-	size_t next_select_end_byte = select_end_byte;
+	int next_select_end_byte = select_end_byte;
 	int next_select_end_subbyte = select_end_subbyte;
-	size_t next_last_selected_byte = last_selected_byte;
+	int next_last_selected_byte = last_selected_byte;
 
 	if (last_selected_byte != -1)
 	{
@@ -189,7 +200,7 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 	}
 
 	ImGuiKey hex_key_pressed = ImGuiKey_None;
-	
+
 	for (ImGuiKey key = ImGuiKey_A; key != ImGuiKey_G; key = (ImGuiKey)((int)key + 1))
 	{
 		if (ImGui::IsKeyPressed(key))
@@ -227,9 +238,9 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 	}
 
 	memset(line_buf, 0, bytes_per_line);
-	
+
 	const ImVec2 mouse_pos = ImGui::GetMousePos();
-	
+
 	ImGuiListClipper clipper;
 	clipper.Begin(lines_count, byte_size.y + spacing.y);
 	while (clipper.Step())
@@ -244,11 +255,11 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 
 		for (int n = clipper.DisplayStart; n != clipper.DisplayEnd; n++)
 		{
-			const size_t line_base = n * bytes_per_line;
+			const int line_base = n * bytes_per_line;
 			if (state->ShowAddress)
 			{
 				if (!state->GetAddressNameCallback || !state->GetAddressNameCallback(state, line_base, address_buf, address_max_chars))
-					snprintf(address_buf, address_max_chars, "%0.*zX", address_max_chars - 1, line_base);
+					ImFormatString(address_buf, (size_t)address_max_chars, "%0.*zX", address_max_chars - 1, (size_t)line_base);
 
 				const ImVec2 text_size = ImGui::CalcTextSize(address_buf);
 				draw_list->AddText(cursor, text_color, address_buf);
@@ -256,10 +267,10 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 				cursor.x += address_max_size;
 			}
 
-			size_t max_bytes_per_line = line_base;
+			int max_bytes_per_line = line_base;
 			max_bytes_per_line = max_bytes_per_line > state->MaxBytes ? max_bytes_per_line - state->MaxBytes : bytes_per_line;
 
-			size_t bytes_read;
+			int bytes_read;
 			if (!state->ReadCallback)
 			{
 				memcpy(line_buf, (char*)state->Bytes + line_base, max_bytes_per_line);
@@ -268,10 +279,30 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 			else
 				bytes_read = state->ReadCallback(state, line_base, line_buf, max_bytes_per_line);
 
+			int row_highlight_min = -1;
+			int row_highlight_max = -1;
+			ImColor row_highlight_color;
+			ImColor row_text_color;
+			bool row_highlight_full_sized;
+			bool row_highlight_ascii;
+
+			if (state->MultipleHighlightCallback)
+			{
+				ImGuiHexEditorHighlightFlags flags = state->MultipleHighlightCallback(state, line_base, bytes_per_line, &row_highlight_min, &row_highlight_max, &row_highlight_color, &row_text_color);
+				if (flags & ImGuiHexEditorHighlightFlags_Apply)
+				{
+					row_highlight_full_sized = flags & ImGuiHexEditorHighlightFlags_FullSized;
+					row_highlight_ascii = flags & ImGuiHexEditorHighlightFlags_Ascii;
+
+					if (flags & ImGuiHexEditorHighlightFlags_TextAutomaticContrast)
+						row_text_color = CalcContrastColor(row_highlight_color);
+				}
+			}
+
 			for (int i = 0; i != bytes_per_line; i++)
 			{
 				const ImRect byte_bb = { { cursor.x, cursor.y }, { cursor.x + byte_size.x, cursor.y + byte_size.y } };
-				
+
 				ImRect item_bb = byte_bb;
 				if (i != 0)
 					item_bb.Min.x -= spacing.x * 0.5f;
@@ -284,7 +315,7 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 
 				const int offset = bytes_per_line * n + i;
 				unsigned char byte;
-				
+
 				char text[3];
 				if (offset < state->MaxBytes && i < bytes_read)
 				{
@@ -307,6 +338,9 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 				if (!ImGui::ItemAdd(item_bb, id, 0, ImGuiItemFlags_Inputable))
 					continue;
 
+				ImColor highlight_color;
+				ImColor byte_text_color = (offset >= state->MaxBytes || (state->RenderZeroesDisabled && byte == 0x00) || i >= bytes_read) ? text_disabled_color : text_color;
+
 				if (offset >= select_start_byte && offset <= select_end_byte)
 				{
 					if ((offset > select_start_byte && offset < select_end_byte)
@@ -328,9 +362,39 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 						draw_list->AddRectFilled(min, max, text_selected_bg_color);
 					}
 				}
+				else
+				{
+					bool single_highlight = false;
 
-				const ImColor color = (offset >= state->MaxBytes || (state->RenderZeroesDisabled && byte == 0x00) || i >= bytes_read) ? text_disabled_color : text_color;
-				draw_list->AddText(byte_bb.Min, color, text);
+					if (state->SingleHighlightCallback)
+					{
+						ImGuiHexEditorHighlightFlags flags = state->SingleHighlightCallback(state, offset, &highlight_color, &byte_text_color);
+						if (flags & ImGuiHexEditorHighlightFlags_Apply)
+						{
+							single_highlight = true;
+
+							if (flags & ImGuiHexEditorHighlightFlags_FullSized)
+								draw_list->AddRectFilled(item_bb.Min, item_bb.Max, highlight_color);
+							else
+								draw_list->AddRectFilled(byte_bb.Min, byte_bb.Max, highlight_color);
+
+							if (flags & ImGuiHexEditorHighlightFlags_TextAutomaticContrast)
+								byte_text_color = CalcContrastColor(highlight_color);
+						}
+					}
+
+					if (!single_highlight && row_highlight_min != -1 && i >= row_highlight_min && i < row_highlight_max)
+					{
+						if (row_highlight_full_sized)
+							draw_list->AddRectFilled(item_bb.Min, item_bb.Max, row_highlight_color);
+						else
+							draw_list->AddRectFilled(byte_bb.Min, byte_bb.Max, row_highlight_color);
+
+						byte_text_color = row_text_color;
+					}
+				}
+
+				draw_list->AddText(byte_bb.Min, byte_text_color, text);
 
 				const bool hovered = ItemHoverable(item_bb, id, ImGuiItemFlags_Inputable);
 
@@ -380,7 +444,7 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 				{
 					IM_ASSERT(offset == select_start_byte || offset == select_end_byte);
 					const int subbyte = offset == select_start_byte ? select_start_subbyte : select_end_subbyte;
-					
+
 					unsigned char wbyte;
 					if (subbyte)
 						wbyte = (byte & 0xf0) | KeyToHalfByte(hex_key_pressed);
@@ -426,13 +490,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 
 				for (int i = 0; i != bytes_per_line; i++)
 				{
-					const size_t offset = (size_t)bytes_per_line * (size_t)n + (size_t)i;
+					const int offset = (int)bytes_per_line * (int)n + (int)i;
 
-					if (offset >= select_start_byte && offset <= select_end_byte)
-					{
-						draw_list->AddRectFilled(cursor, { cursor.x + char_size.x, cursor.y + char_size.y }, text_selected_bg_color);
-					}
-					
 					unsigned char byte;
 					if (offset < state->MaxBytes)
 						byte = line_buf[i];
@@ -441,12 +500,27 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 
 					bool has_ascii = HasAsciiRepresentation(byte);
 
+					const ImRect char_bb = { cursor,  { cursor.x + char_size.x, cursor.y + char_size.y } };
+					ImColor char_color = (offset >= state->MaxBytes || !has_ascii) ? text_disabled_color : text_color;
+
+					if (offset >= select_start_byte && offset <= select_end_byte)
+					{
+						draw_list->AddRectFilled(char_bb.Min, char_bb.Max, text_selected_bg_color);
+					}
+					else
+					{
+						if (row_highlight_min != -1 && i >= row_highlight_min && i < row_highlight_max && row_highlight_ascii)
+						{
+							draw_list->AddRectFilled(char_bb.Min, char_bb.Max, row_highlight_color);
+							char_color = row_text_color;
+						}
+					}
+						
 					char text[2];
 					text[0] = has_ascii ? *(char*)&byte : '.';
 					text[1] = '\0';
 
-					const ImColor color = (offset >= state->MaxBytes || !has_ascii) ? text_disabled_color : text_color;
-					draw_list->AddText(cursor, color, text);
+					draw_list->AddText(cursor, char_color, text);
 
 					cursor.x += char_size.x;
 					ImGui::SetCursorScreenPos(cursor);
@@ -476,4 +550,20 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
 void ImGui::EndHexEditor()
 {
 	ImGui::EndChild();
+}
+
+bool ImGui::CalcHexEditorRowRange(int row_offset, int row_bytes_count, int range_min, int range_max, int* out_min, int* out_max)
+{
+	if (row_offset >= range_min && row_offset <= range_max)
+	{
+		const int min_delta = row_offset - range_min;
+		*out_min = min_delta < row_bytes_count ? min_delta : 0;
+
+		const int max_row_offset = row_offset + row_bytes_count;
+		*out_max = range_max > max_row_offset ? row_bytes_count : (row_bytes_count - (max_row_offset - range_max));
+
+		return true;
+	}
+
+	return false;
 }

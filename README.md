@@ -11,6 +11,7 @@ Features
 6. Keyboard navigation
 7. Custom read/write/name callbacks
 8. Render zeroes as disabled (idea from the ocronut's hex editor version)
+9. Custom highlighting
 
 Example:
 ```cpp
@@ -39,6 +40,28 @@ hex_state.GetAddressNameCallback = [](ImGuiHexEditorState* state, size_t offset,
   return false;
 };
 
+hex_state.SingleHighlightCallback = [](ImGuiHexEditorState* state, int offset, ImColor* color, ImColor* text_color) -> ImGuiHexEditorHighlightFlags
+{
+    if (offset >= 100 && offset <= 150)
+    {
+        *color = ImColor(user_highlight_color);
+        return ImGuiHexEditorHighlightFlags_Apply | ImGuiHexEditorHighlightFlags_TextAutomaticContrast;
+    }
+
+    return ImGuiHexEditorHighlightFlags_None;
+};
+
+hex_state.MultipleHighlightCallback = [](ImGuiHexEditorState* state, int row_offset, int row_bytes_count, int* highlight_min, int* highlight_max, ImColor* color, ImColor* text_color) -> ImGuiHexEditorHighlightFlags
+{
+    if (ImGui::CalcHexEditorRowRange(row_offset, row_bytes_count, 200, 250, highlight_min, highlight_max))
+    {
+        *color = IM_COL32(255, 0, 0, 255);
+        return ImGuiHexEditorHighlightFlags_Apply | ImGuiHexEditorHighlightFlags_TextAutomaticContrast | ImGuiHexEditorHighlightFlags_FullSized | ImGuiHexEditorHighlightFlags_Ascii;
+    }
+
+    return ImGuiHexEditorHighlightFlags_None;
+};
+
 hex_state.Bytes = (void*)&ImGui::GetIO();
 hex_state.MaxBytes = sizeof(ImGuiIO) + 0x1000;
 
@@ -48,4 +71,3 @@ ImGui::EndHexEditor();
 
 TODO:
 - [ ] Support for any amount of address chars for automatical bytes count selection.
-- [ ] Highlighting support.
