@@ -1,19 +1,22 @@
 My version of hexadecimal editor for the Dear ImGui
 
-https://github.com/user-attachments/assets/69057bdd-333a-411b-9cef-24eb602221b4
+https://github.com/user-attachments/assets/f12a9352-e80c-4fa4-847a-2b28489e54da
 
 Features
 1. Automatically adjust visible bytes count depending on the window width
 2. Read-only mode
 3. Optional ascii display
-4. Separators support (customizable)
+4. Separators support
 5. Support for lowercase bytes
 6. Keyboard navigation
 7. Custom read/write/name callbacks
 8. Render zeroes as disabled (idea from the ocronut's hex editor version)
-9. Custom highlighting
+9. Custom highlighting (with automatic text contrast selection)
 
 Example:
+
+> [!NOTE]  
+> Hex editor doesn't require you to implement callbacks at all.
 ```cpp
 static ImGuiHexEditorState hex_state;
 
