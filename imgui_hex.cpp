@@ -552,16 +552,29 @@ void ImGui::EndHexEditor()
 	ImGui::EndChild();
 }
 
+static bool RangeRangeIntersection(int a_min, int a_max, int b_min, int b_max, int* out_min, int* out_max)
+{
+	if (a_max < b_min || b_max < a_min)
+		return false;
+
+	*out_min = ImMax(a_min, b_min);
+	*out_max = ImMin(a_max, b_max);
+
+	if (*out_min <= *out_max)
+		return true;
+
+	return false;
+}
+
 bool ImGui::CalcHexEditorRowRange(int row_offset, int row_bytes_count, int range_min, int range_max, int* out_min, int* out_max)
 {
-	if (row_offset >= range_min && row_offset <= range_max)
+	int abs_min;
+	int abs_max;
+
+	if (RangeRangeIntersection(row_offset, row_offset + row_bytes_count, range_min, range_max, &abs_min, &abs_max))
 	{
-		const int min_delta = row_offset - range_min;
-		*out_min = min_delta < row_bytes_count ? min_delta : 0;
-
-		const int max_row_offset = row_offset + row_bytes_count;
-		*out_max = range_max > max_row_offset ? row_bytes_count : (row_bytes_count - (max_row_offset - range_max));
-
+		*out_min = abs_min - row_offset;
+		*out_max = abs_max - row_offset;
 		return true;
 	}
 
