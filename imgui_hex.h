@@ -33,7 +33,6 @@ struct ImGuiHexEditorState
 	ImGuiHexEditorHighlightFlags(*SingleHighlightCallback)(ImGuiHexEditorState* state, int offset, ImColor* color, ImColor* text_color) = nullptr;
 	ImGuiHexEditorHighlightFlags(*MultipleHighlightCallback)(ImGuiHexEditorState* state, int row_offset, int row_bytes_count, int* highlight_min, int* highlight_max, ImColor* color, ImColor* text_color) = nullptr;
 
-	// [Internal]
 	int SelectStartByte = -1;
 	int SelectStartSubByte = 0;
 	int SelectEndByte = -1;
@@ -43,7 +42,7 @@ struct ImGuiHexEditorState
 
 namespace ImGui
 {
-	bool BeginHexEditor(const char* str_id, ImGuiHexEditorState* state);
+	bool BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const ImVec2& size = { 0.f, 0.f }, ImGuiChildFlags child_flags = 0, ImGuiWindowFlags window_flags = 0);
 	void EndHexEditor();
 
 	// Helpers

@@ -44,9 +44,9 @@ static ImColor CalcContrastColor(ImColor color)
 	return IM_COL32(c, c, c, 255);
 }
 
-bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state)
+bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const ImVec2& size, ImGuiChildFlags child_flags, ImGuiWindowFlags window_flags)
 {
-	if (!ImGui::BeginChild(str_id))
+	if (!ImGui::BeginChild(str_id, size, child_flags, window_flags))
 		return false;
 
 	const ImVec2 char_size = ImGui::CalcTextSize("0");
