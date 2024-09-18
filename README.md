@@ -1,6 +1,6 @@
 My version of hexadecimal editor for the Dear ImGui
 
-https://github.com/user-attachments/assets/f12a9352-e80c-4fa4-847a-2b28489e54da
+![image](https://github.com/user-attachments/assets/d95e778f-d157-4abc-94ad-2acd7890f4c9)
 
 Features
 1. Automatically adjust visible bytes count depending on the window width
@@ -12,6 +12,7 @@ Features
 7. Custom read/write/name callbacks
 8. Render zeroes as disabled (idea from the ocronut's hex editor version)
 9. Custom highlighting (with automatic text contrast selection)
+10. Clipboard support
 
 Example:
 
@@ -43,27 +44,29 @@ hex_state.GetAddressNameCallback = [](ImGuiHexEditorState* state, size_t offset,
   return false;
 };
 
-hex_state.SingleHighlightCallback = [](ImGuiHexEditorState* state, int offset, ImColor* color, ImColor* text_color) -> ImGuiHexEditorHighlightFlags
+hex_state.SingleHighlightCallback = [](ImGuiHexEditorState* state, int offset, ImColor* color, ImColor* text_color, ImColor* border_color) -> ImGuiHexEditorHighlightFlags
 {
-    if (offset >= 100 && offset <= 150)
-    {
-        *color = ImColor(user_highlight_color);
-        return ImGuiHexEditorHighlightFlags_Apply | ImGuiHexEditorHighlightFlags_TextAutomaticContrast;
-    }
+  if (offset >= 100 && offset <= 150)
+  {
+    *color = ImColor(user_highlight_color);
+    return ImGuiHexEditorHighlightFlags_Apply | ImGuiHexEditorHighlightFlags_TextAutomaticContrast | ImGuiHexEditorHighlightFlags_Ascii
+      | ImGuiHexEditorHighlightFlags_BorderAutomaticContrast;
+  }
 
-    return ImGuiHexEditorHighlightFlags_None;
+  return ImGuiHexEditorHighlightFlags_None;
 };
 
-hex_state.MultipleHighlightCallback = [](ImGuiHexEditorState* state, int row_offset, int row_bytes_count, int* highlight_min, int* highlight_max, ImColor* color, ImColor* text_color) -> ImGuiHexEditorHighlightFlags
-{
-    if (ImGui::CalcHexEditorRowRange(row_offset, row_bytes_count, 200, 250, highlight_min, highlight_max))
-    {
-        *color = IM_COL32(255, 0, 0, 255);
-        return ImGuiHexEditorHighlightFlags_Apply | ImGuiHexEditorHighlightFlags_TextAutomaticContrast | ImGuiHexEditorHighlightFlags_FullSized | ImGuiHexEditorHighlightFlags_Ascii;
-    }
+hex_state.HighlightRanges.clear();
 
-    return ImGuiHexEditorHighlightFlags_None;
-};
+{
+    ImGuiHexEditorHighlightRange range;
+    range.From = 200;
+    range.To = 250;
+    range.Color = ImColor(user_highlight_color);
+    range.Flags = ImGuiHexEditorHighlightFlags_TextAutomaticContrast | ImGuiHexEditorHighlightFlags_FullSized 
+        | ImGuiHexEditorHighlightFlags_Ascii | ImGuiHexEditorHighlightFlags_Border | ImGuiHexEditorHighlightFlags_BorderAutomaticContrast;
+    hex_state.HighlightRanges.push_back(range);
+}
 
 hex_state.Bytes = (void*)&ImGui::GetIO();
 hex_state.MaxBytes = sizeof(ImGuiIO) + 0x1000;
