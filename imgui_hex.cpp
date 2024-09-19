@@ -333,13 +333,16 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 		address_max_chars = 0;
 	}
 
-	float bytes_avail_x = content_avail.x - address_max_size - (spacing.x * 0.5f);
+	float bytes_avail_x = content_avail.x - address_max_size;
 	if (ImGui::GetScrollMaxY() > 0.f)
 		bytes_avail_x -= style.ScrollbarSize;
 
-	bytes_avail_x = bytes_avail_x < 0.f ? 0.f : bytes_avail_x;
-
 	const bool show_ascii = state->ShowAscii;
+
+	if (show_ascii)
+		bytes_avail_x -= char_size.x * 0.5f;
+
+	bytes_avail_x = bytes_avail_x < 0.f ? 0.f : bytes_avail_x;
 
 	int bytes_per_line;
 
@@ -369,6 +372,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 		lines_count = 0;
 
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
+	ImGuiIO& io = ImGui::GetIO();
+
 	const ImColor text_color = ImGui::GetColorU32(ImGuiCol_Text);
 	const ImColor text_disabled_color = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 	const ImColor text_selected_bg_color = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
@@ -382,12 +387,16 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 	const int select_end_byte = state->SelectEndByte;
 	const int select_end_subbyte = state->SelectEndSubByte;
 	const int last_selected_byte = state->LastSelectedByte;
+	const int select_drag_byte = state->SelectDragByte;
+	const int select_drag_subbyte = state->SelectDragSubByte;
 
 	int next_select_start_byte = select_start_byte;
 	int next_select_start_subbyte = select_start_subbyte;
 	int next_select_end_byte = select_end_byte;
 	int next_select_end_subbyte = select_end_subbyte;
 	int next_last_selected_byte = last_selected_byte;
+	int next_select_drag_byte = select_drag_byte;
+	int next_select_drag_subbyte = select_drag_subbyte;
 
 	ImGuiKey hex_key_pressed = ImGuiKey_None;
 
@@ -556,9 +565,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 		return true;
 	}
 
-	memset(line_buf, 0, bytes_per_line);
-
 	const ImVec2 mouse_pos = ImGui::GetMousePos();
+	const bool mouse_left_down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
 	ImGuiListClipper clipper;
 	clipper.Begin(lines_count, byte_size.y + spacing.y);
@@ -568,9 +576,9 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 
 		ImVec2 cursor = ImGui::GetCursorScreenPos();
 
+		ImVec2 ascii_cursor = { cursor.x + address_max_size + (spacing.x * 0.5f) + (bytes_per_line * (byte_size.x + spacing.x)) + (actual_separators * spacing.x), cursor.y };
 		if (show_ascii)
 		{
-			ImVec2 ascii_cursor = { cursor.x + address_max_size + (spacing.x * 0.5f) + (bytes_per_line * (byte_size.x + spacing.x)) + (actual_separators * spacing.x), cursor.y};
 			draw_list->AddLine(ascii_cursor, { ascii_cursor.x, ascii_cursor.y + clipper_lines * (byte_size.y + spacing.y) }, separator_color);
 		}
 
@@ -616,8 +624,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 				const ImRect byte_bb = { { cursor.x, cursor.y }, { cursor.x + byte_size.x, cursor.y + byte_size.y } };
 
 				ImRect item_bb = byte_bb;
-				//if (i != 0)
-					item_bb.Min.x -= spacing.x * 0.5f;
+
+				item_bb.Min.x -= spacing.x * 0.5f;
 
 				if (n != clipper.DisplayStart)
 					item_bb.Min.y -= spacing.y * 0.5f;
@@ -627,6 +635,11 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 
 				const int offset = bytes_per_line * n + i;
 				unsigned char byte;
+
+				ImVec2 byte_ascii = ascii_cursor;
+
+				byte_ascii.x += (char_size.x * i) + spacing.x;
+				byte_ascii.y += (char_size.y + spacing.y) * (n - clipper.DisplayStart);
 
 				char text[3];
 				if (offset < state->MaxBytes && i < bytes_read)
@@ -647,6 +660,7 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 				}
 
 				const ImGuiID id = ImGui::GetID(offset);
+
 				if (!ImGui::ItemAdd(item_bb, id, 0, ImGuiItemFlags_Inputable))
 					continue;
 
@@ -654,59 +668,31 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 
 				if (offset >= select_start_byte && offset <= select_end_byte)
 				{
-					RenderByteDecorations(draw_list, (state->SelectionHighlightFlags & ImGuiHexEditorHighlightFlags_FullSized) ? item_bb : byte_bb, text_selected_bg_color, state->SelectionHighlightFlags, border_color,
+					ImGuiHexEditorHighlightFlags flags = state->SelectionHighlightFlags;
+					
+					if (select_start_byte == select_end_byte)
+					{
+						flags &= ~ImGuiHexEditorHighlightFlags_FullSized;
+					}
+
+					ImRect bb = (flags & ImGuiHexEditorHighlightFlags_FullSized) ? item_bb : byte_bb;
+
+					if (select_start_byte == select_end_byte)
+					{
+						if (select_start_subbyte)
+							bb.Min.x = byte_bb.GetCenter().x;
+						else
+							bb.Max.x = byte_bb.GetCenter().x;
+					}
+
+					RenderByteDecorations(draw_list, bb, text_selected_bg_color, flags, border_color,
 						style.FrameRounding, offset, select_start_byte, select_end_byte, bytes_per_line, i, line_base);
 
-					/*if ((offset > select_start_byte && offset < select_end_byte)
-						|| (select_start_byte != select_end_byte && offset == select_start_byte && !select_start_subbyte)
-						|| (select_start_byte != select_end_byte && offset == select_end_byte && select_end_subbyte))
+					if (flags & ImGuiHexEditorHighlightFlags_Ascii)
 					{
-						if (state->SelectionHighlightFlags & ImGuiHexEditorHighlightFlags_FullSized)
-							draw_list->AddRectFilled(item_bb.Min, item_bb.Max, text_selected_bg_color);
-						else
-							draw_list->AddRectFilled(byte_bb.Min, byte_bb.Max, text_selected_bg_color);
+						RenderByteDecorations(draw_list, { byte_ascii, { byte_ascii.x + char_size.x, byte_ascii.y + char_size.y } }, 
+							text_selected_bg_color, flags, border_color, style.FrameRounding, offset, offset, offset, bytes_per_line, i, line_base);
 					}
-					else
-					{
-						const int subbyte = offset == select_start_byte ? select_start_subbyte : select_end_subbyte;
-
-						ImVec2 min;
-
-						if (state->SelectionHighlightFlags & ImGuiHexEditorHighlightFlags_FullSized)
-							min = item_bb.Min;
-						else
-							min = byte_bb.Min;
-
-						if (subbyte)
-						{
-							if (state->SelectionHighlightFlags & ImGuiHexEditorHighlightFlags_FullSized)
-								min.x += (byte_bb.Min.x - item_bb.Min.x);
-							
-							min.x += byte_size.x * 0.5f;
-						}
-
-						ImVec2 max;
-
-						if (state->SelectionHighlightFlags & ImGuiHexEditorHighlightFlags_FullSized)
-						{
-							if (!subbyte && !(select_start_byte == select_end_byte && select_end_subbyte))
-								max.x = byte_bb.Min.x + byte_size.x * 0.5f;
-							else
-								max.x = item_bb.Max.x;
-						}
-						else {
-							max.x = min.x + byte_size.x * 0.5f;
-						}
-
-						if (state->SelectionHighlightFlags & ImGuiHexEditorHighlightFlags_FullSized)
-							max.y = item_bb.Max.y;
-						else
-							max.y = byte_bb.Max.y;
-
-						draw_list->AddRectFilled(min, max, text_selected_bg_color);
-					}*/
-
-					
 				}
 				else
 				{
@@ -735,6 +721,12 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 
 							RenderByteDecorations(draw_list, (flags & ImGuiHexEditorHighlightFlags_FullSized) ? item_bb : byte_bb, color, flags, highlight_border_color,
 								style.FrameRounding, offset, offset, offset, bytes_per_line, i, line_base);
+
+							if (flags & ImGuiHexEditorHighlightFlags_Ascii)
+							{
+								RenderByteDecorations(draw_list, { byte_ascii, { byte_ascii.x + char_size.x, byte_ascii.y + char_size.y } }, color, flags, highlight_border_color,
+									style.FrameRounding, offset, offset, offset, bytes_per_line, i, line_base);
+							}
 							
 							if (flags & ImGuiHexEditorHighlightFlags_TextAutomaticContrast)
 								byte_text_color = CalcContrastColor(color);
@@ -761,6 +753,12 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 								RenderByteDecorations(draw_list, (range.Flags & ImGuiHexEditorHighlightFlags_FullSized) ? item_bb : byte_bb, range.Color, range.Flags, highlight_border_color,
 									style.FrameRounding, offset, range.From, range.To, bytes_per_line, i, line_base);
 
+								if (range.Flags & ImGuiHexEditorHighlightFlags_Ascii)
+								{
+									RenderByteDecorations(draw_list, { byte_ascii, { byte_ascii.x + char_size.x, byte_ascii.y + char_size.y } }, range.Color, range.Flags, highlight_border_color,
+										style.FrameRounding, offset, range.From, range.To, bytes_per_line, i, line_base);
+								}
+
 								if (range.Flags & ImGuiHexEditorHighlightFlags_TextAutomaticContrast)
 									byte_text_color = CalcContrastColor(range.Color);
 							}
@@ -770,55 +768,61 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 
 				draw_list->AddText(byte_bb.Min, byte_text_color, text);
 
-				const bool hovered = ItemHoverable(item_bb, id, ImGuiItemFlags_Inputable);
-
-				if (hovered && !(offset >= state->MaxBytes))
+				if (offset == select_start_byte)
 				{
-					ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
+					state->SelectCursorAnimationTime += io.DeltaTime;
 
-					if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+					if (!io.ConfigInputTextCursorBlink || ImFmod(state->SelectCursorAnimationTime, 1.20f) <= 0.80f)
 					{
-						next_select_start_byte = offset;
-						next_select_end_byte = offset;
-						next_select_start_subbyte = mouse_pos.x > item_bb.GetCenter().x;
-						next_last_selected_byte = offset;
-						ImGui::SetKeyboardFocusHere();
+						ImVec2 pos;
+						pos.x = byte_bb.Min.x;
+						pos.y = byte_bb.Max.y;
+
+						if (select_start_subbyte)
+							pos.x += char_size.x;
+						
+						draw_list->AddLine({ pos.x, pos.y }, { pos.x + char_size.x, pos.y }, text_color);
 					}
-					else if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && select_start_byte != -1)
+				}
+
+				const bool hovered = ImGui::ItemHoverable(item_bb, id, ImGuiItemFlags_Inputable);
+
+				if (select_drag_byte != -1 && offset == select_drag_byte && !mouse_left_down)
+				{
+					next_select_drag_byte = -1;
+				}
+				else
+				{
+					if (hovered)
 					{
-						/*if (offset == select_start_byte && select_start_subbyte) {
-							int a = 5;
-						}*/
+						const bool clicked = ImGui::IsItemClicked();
 
-						if (offset < next_select_start_byte)
+						if (clicked)
 						{
-							const int prev_byte = next_select_end_byte > next_select_start_byte ? next_select_end_byte : next_select_start_byte;
-							const int prev_subbyte = next_select_end_byte > next_select_start_byte ? next_select_end_subbyte : next_select_start_subbyte;
-
 							next_select_start_byte = offset;
-							next_select_start_subbyte = mouse_pos.x > item_bb.GetCenter().x;
-
-							next_select_end_byte = prev_byte;
-							next_select_end_subbyte = prev_subbyte;
-
-							next_last_selected_byte = offset;
-						}
-						else if (offset != select_start_byte)
-						{
 							next_select_end_byte = offset;
-							next_select_end_subbyte = mouse_pos.x > item_bb.GetCenter().x;
+							next_select_drag_byte = offset;
+							next_select_drag_subbyte = mouse_pos.x > byte_bb.GetCenter().x;
+							next_select_start_subbyte = next_select_drag_subbyte;
+							next_last_selected_byte = offset;
+
+							ImGui::SetKeyboardFocusHere();
 						}
-						else if (offset == select_start_byte)
+						else if (mouse_left_down && select_drag_byte != -1)
 						{
-							next_select_start_subbyte = mouse_pos.x > item_bb.GetCenter().x;
-
-							if (!select_start_subbyte && next_select_start_subbyte) {
-								next_select_start_subbyte = 0;
-								next_select_end_subbyte = 1;
+							if (offset >= select_drag_byte)
+							{
+								next_select_end_byte = offset;
 							}
-						}
+							else
+							{
+								next_select_start_byte = offset;
+								next_select_end_byte = select_drag_byte;
+								next_select_start_subbyte = 0;
+							}	
 
-						ImGui::SetKeyboardFocusHere();
+							ImGui::SetKeyboardFocusHere();
+						}
 					}
 				}
 
@@ -861,6 +865,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 						next_select_start_byte = next_last_selected_byte;
 						next_select_end_byte = next_last_selected_byte;
 					}
+
+					state->SelectCursorAnimationTime = 0.f;
 				}
 
 				cursor.x += byte_size.x + spacing.x;
@@ -868,17 +874,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 					&& i != bytes_per_line - 1)
 					cursor.x += spacing.x;
 
-				ImGui::SetCursorScreenPos(cursor);
-			}
-
-			if (show_ascii)
-			{
-				cursor.x += spacing.x;
-
-				for (int i = 0; i != bytes_per_line; i++)
+				if (show_ascii)
 				{
-					const int offset = (int)bytes_per_line * (int)n + (int)i;
-
 					unsigned char byte;
 					if (offset < state->MaxBytes)
 						byte = line_buf[i];
@@ -887,27 +884,21 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 
 					bool has_ascii = HasAsciiRepresentation(byte);
 
-					const ImRect char_bb = { cursor,  { cursor.x + char_size.x, cursor.y + char_size.y } };
-					ImColor char_color = (offset >= state->MaxBytes || !has_ascii) ? text_disabled_color : text_color;
-
-					if (offset >= select_start_byte && offset <= select_end_byte)
+					const ImRect char_bb = { byte_ascii,  { byte_ascii.x + char_size.x, byte_ascii.y + char_size.y } };
+					
+					/*if (offset >= select_start_byte && offset <= select_end_byte)
 					{
 						draw_list->AddRectFilled(char_bb.Min, char_bb.Max, text_selected_bg_color);
-					}
-					else
-					{
+					}*/
 
-					}
-						
 					char text[2];
 					text[0] = has_ascii ? *(char*)&byte : '.';
 					text[1] = '\0';
 
-					draw_list->AddText(cursor, char_color, text);
-
-					cursor.x += char_size.x;
-					ImGui::SetCursorScreenPos(cursor);
+					draw_list->AddText(byte_ascii, byte_text_color, text);
 				}
+
+				ImGui::SetCursorScreenPos(cursor);
 			}
 
 			ImGui::NewLine();
@@ -920,6 +911,8 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 	state->SelectEndByte = next_select_end_byte;
 	state->SelectEndSubByte = next_select_end_subbyte;	
 	state->LastSelectedByte = next_last_selected_byte;
+	state->SelectDragByte = next_select_drag_byte;
+	state->SelectDragSubByte = next_select_drag_subbyte;
 
 	if (line_buf != stack_line_buf)
 		ImGui::MemFree(line_buf);

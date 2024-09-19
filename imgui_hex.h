@@ -61,8 +61,11 @@ struct ImGuiHexEditorState
 	int SelectEndByte = -1;
 	int SelectEndSubByte = 0;
 	int LastSelectedByte = -1;
+	int SelectDragByte = -1;
+	int SelectDragSubByte = 0;
+	float SelectCursorAnimationTime = 0.f;
 
-	ImGuiHexEditorHighlightFlags SelectionHighlightFlags = ImGuiHexEditorHighlightFlags_FullSized | ImGuiHexEditorHighlightFlags_Border;
+	ImGuiHexEditorHighlightFlags SelectionHighlightFlags = ImGuiHexEditorHighlightFlags_FullSized | ImGuiHexEditorHighlightFlags_Ascii;
 };
 
 namespace ImGui
