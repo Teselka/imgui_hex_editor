@@ -1,6 +1,6 @@
 My version of hexadecimal editor for the Dear ImGui
 
-![image](https://github.com/user-attachments/assets/d95e778f-d157-4abc-94ad-2acd7890f4c9)
+![image](https://github.com/user-attachments/assets/c75a37e1-26ea-497a-86a2-1b838bb4a1a8)
 
 Features
 1. Automatically adjust visible bytes count depending on the window width
