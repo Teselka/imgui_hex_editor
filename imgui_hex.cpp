@@ -455,6 +455,74 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 			}
 		}
 	}
+	else if ( state->EnableClipboard && ImGui::IsKeyChordPressed( ImGuiMod_Ctrl | ImGuiKey_V ) )
+	{
+		if ( state->SelectStartByte != -1 )
+		{
+			const char* ptext = ImGui::GetClipboardText( );
+
+			if ( ptext ) {
+				size_t len = strlen( ptext );
+
+				if ( len > 0 && len <= size_t( state->MaxBytes * 3 ) ) {
+
+					bool b_valid = true;
+
+					for ( size_t i = 0; i < len; ++i )
+					{
+						if ( ptext[ i ] != '?' && ptext[ i ] != ' ' && !isxdigit( ptext[ i ] ) )
+						{
+							b_valid = false;
+							break;
+						}
+					}
+
+					if ( b_valid )
+					{
+						ImVector<ImS32> list_bytes;
+
+						char* start = (char*)( ptext );
+
+						char* end = (char*)( start + len );
+
+						for ( char* current = start; current < end; ++current )
+						{
+							if ( *current == '?' )
+							{
+								++current;
+
+								if ( *current == '?' )
+									++current;
+
+								list_bytes.push_back( -1 );
+							}
+							else
+								list_bytes.push_back( strtoul( current, &current, 16 ) );
+						}
+
+						int nremaining_bytes = state->MaxBytes - state->SelectStartByte;
+
+						if ( nremaining_bytes >= list_bytes.Size ) {
+
+							for ( int i = 0; i < list_bytes.Size; i++ )
+							{
+								if ( list_bytes[ i ] == -1 ) // skip wildcard
+									continue;
+
+								if ( state->WriteCallback )
+									state->WriteCallback( state, state->SelectStartByte + i, &list_bytes[ i ], 1 );
+								else
+								{
+									memcpy( (char*)state->Bytes + state->SelectStartByte + i, &list_bytes[ i ], 1 );
+								}
+							}
+						}
+					}
+
+				}
+			}
+		}
+	}
 	else
 	{
 
@@ -544,6 +612,20 @@ bool ImGui::BeginHexEditor(const char* str_id, ImGuiHexEditorState* state, const
 				if (ImGui::IsKeyPressed(key))
 				{
 					hex_key_pressed = key;
+					break;
+				}
+			}
+		}
+
+		if ( hex_key_pressed == ImGuiKey_None )
+		{
+			int diff = ImGuiKey_Keypad0 - ImGuiKey_0;
+
+			for ( ImGuiKey key = ImGuiKey_Keypad0; key != ImGuiKey_KeypadDecimal; key = (ImGuiKey)( (int)key + 1 ) )
+			{
+				if ( ImGui::IsKeyPressed( key ) )
+				{
+					hex_key_pressed = (ImGuiKey)( key - diff );
 					break;
 				}
 			}
